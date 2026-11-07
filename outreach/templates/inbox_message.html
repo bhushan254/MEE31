@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ msg.subject }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/inbox">← Inbox</a></div>
+    <h1>{{ msg.subject or '(no subject)' }}</h1>
+    <div class="sub">
+      {% if msg.lead %}<a href="/leads/{{ msg.lead.id }}">{{ msg.lead.full_name or msg.lead.email }}</a>{{ ' · ' ~ msg.lead.company if msg.lead.company }} · {% endif %}
+      {% if msg.campaign %}campaign <a href="/campaigns/{{ msg.campaign.id }}">{{ msg.campaign.name }}</a> · {% endif %}
+      mailbox {{ msg.to_email }}
+    </div>
+  </div>
+  {% if msg.lead %}
+  <form method="post" action="/leads/{{ msg.lead.id }}/update" class="actions">
+    <input type="hidden" name="back" value="/inbox/{{ msg.id }}">
+    {% for k, v in labels.items() %}
+      <button name="label" value="{{ k }}" class="btn btn-sm {{ 'btn-primary' if msg.lead.label == k }}">{{ v }}</button>
+    {% endfor %}
+  </form>
+  {% endif %}
+</div>
+
+{% for m in thread %}
+<div class="thread-msg {{ m.direction }}">
+  <div class="meta">
+    <div><b>{{ ('You (' ~ m.from_email ~ ')') if m.direction == 'out' else m.from_email }}</b>
+      {% if m.kind not in ['campaign', 'reply'] %}<span class="pill {{ m.kind }}">{{ m.kind|replace('_',' ') }}</span>{% endif %}
+      <div class="small muted">{{ m.subject }}</div></div>
+    <div class="muted small">{{ dt(m.created_at) }}</div>
+  </div>
+  <iframe sandbox="allow-same-origin allow-popups" srcdoc="{{ m.body_html }}" onload="fitFrame(this)"></iframe>
+</div>
+{% endfor %}
+
+{% if msg.kind != 'bounce' and msg.mailbox %}
+<div class="card">
+  <h2>Reply</h2>
+  <form method="post" action="/inbox/{{ msg.id }}/reply">
+    <div class="field"><textarea name="text" placeholder="Write your reply. It's sent from {{ msg.mailbox.email }} in the same email thread, with your signature."></textarea></div>
+    <button class="btn btn-primary">Send reply</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

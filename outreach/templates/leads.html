@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Leads</h1><div class="sub">{{ total }} lead{{ '' if total == 1 else 's' }}{% if f_list %} in "{{ f_list }}"{% endif %}</div></div>
+</div>
+
+<div class="card">
+  <h2>Upload a lead list (CSV)</h2>
+  <form method="post" action="/leads/import" enctype="multipart/form-data">
+    <div class="row">
+      <div class="field"><label>CSV file</label><input type="file" name="file" accept=".csv,text/csv" required></div>
+      <div class="field"><label>List name</label><input type="text" name="list_name" placeholder="e.g. Dentists USA - Nov" list="list-names">
+        <datalist id="list-names">{% for name, n in lists %}<option value="{{ name }}">{% endfor %}</datalist></div>
+      <div class="field" style="flex:0"><button class="btn btn-primary">Upload</button></div>
+    </div>
+    <details class="small muted">
+      <summary>How should my file look?</summary>
+      <p style="margin-top:8px">The first row must have column names. Only an <b>Email</b> column is required. These are recognised automatically:
+        <code>Email</code>, <code>First Name</code>, <code>Last Name</code>, <code>Company</code> (or a single <code>Name</code> column).
+        <b>Every other column</b> (e.g. <code>City</code>, <code>Website</code>, <code>Icebreaker</code>) becomes a variable you can use in emails,
+        like <code>{{ '{{city}}' }}</code> or <code>{{ '{{icebreaker}}' }}</code>.</p>
+      <p>From Excel: <i>File → Save As → CSV UTF-8</i>. From Google Sheets: <i>File → Download → CSV</i>. Duplicates and blocklisted emails are skipped automatically.</p>
+    </details>
+  </form>
+</div>
+
+<form method="get" class="row" style="margin-bottom:14px">
+  <div class="field" style="margin:0"><input type="search" name="q" value="{{ f_q }}" placeholder="Search email, name, company"></div>
+  <div class="field" style="margin:0"><select name="list"><option value="">All lists</option>
+    {% for name, n in lists %}<option value="{{ name }}" {{ 'selected' if name == f_list }}>{{ name }} ({{ n }})</option>{% endfor %}</select></div>
+  <div class="field" style="margin:0"><select name="status"><option value="">Any status</option>
+    {% for s in ['new','contacted','replied','bounced','unsubscribed'] %}<option value="{{ s }}" {{ 'selected' if s == f_status }}>{{ s|capitalize }}</option>{% endfor %}
+    {% for k, v in labels.items() %}<option value="{{ k }}" {{ 'selected' if k == f_status }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="field" style="flex:0;margin:0"><button class="btn">Filter</button></div>
+</form>
+
+<div class="card tight">
+  {% if leads %}
+  <table>
+    <tr><th>Email</th><th>Name</th><th>Company</th><th>List</th><th>Status</th><th>Label</th></tr>
+    {% for l in leads %}
+    <tr>
+      <td><a href="/leads/{{ l.id }}">{{ l.email }}</a></td>
+      <td>{{ l.full_name or '—' }}</td>
+      <td>{{ l.company or '—' }}</td>
+      <td class="muted small">{{ l.list_name }}</td>
+      <td><span class="pill {{ l.status }}">{{ l.status }}</span></td>
+      <td>{% if l.label %}<span class="pill {{ l.label }}">{{ labels[l.label] }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="pager">
+    {% if page_no > 1 %}<a class="btn btn-sm" href="?q={{ f_q|urlencode }}&list={{ f_list|urlencode }}&status={{ f_status }}&page={{ page_no - 1 }}">← Prev</a>{% endif %}
+    <span class="muted small">Page {{ page_no }} of {{ pages }}</span>
+    {% if page_no < pages %}<a class="btn btn-sm" href="?q={{ f_q|urlencode }}&list={{ f_list|urlencode }}&status={{ f_status }}&page={{ page_no + 1 }}">Next →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty"><h3>No leads here yet</h3><p>Upload a CSV file above.</p></div>
+  {% endif %}
+</div>
+
+{% if lists %}
+<details class="card">
+  <summary>Delete a whole list</summary>
+  <form method="post" action="/lists/delete" class="row" style="margin-top:12px" onsubmit="return confirm('Delete every lead in this list? This cannot be undone.')">
+    <div class="field" style="margin:0"><select name="list_name">{% for name, n in lists %}<option value="{{ name }}">{{ name }} ({{ n }})</option>{% endfor %}</select></div>
+    <div class="field" style="flex:0;margin:0"><button class="btn btn-danger">Delete list</button></div>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

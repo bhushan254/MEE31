@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Settings</h1><div class="sub">Microsoft connection and general preferences</div></div></div>
+
+<form method="post" action="/settings">
+<div class="card">
+  <h2>Microsoft app details</h2>
+  <p class="muted">Create these once in the Microsoft Entra admin center. The <a href="/guide">setup guide</a> shows every click.</p>
+  <div class="field">
+    <label>Redirect URI (copy this into Microsoft)</label>
+    <div class="copy"><input type="text" id="redirect" value="{{ redirect_uri }}" readonly><button type="button" class="btn" onclick="copyText('redirect')">Copy</button></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Application (client) ID</label><input type="text" name="ms_client_id" value="{{ client_id }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+    <div class="field"><label>Directory (tenant) ID</label><input type="text" name="ms_tenant" value="{{ tenant }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+      <div class="help">Paste the tenant ID from the app's Overview page.</div></div>
+  </div>
+  <div class="field"><label>Client secret (the "Value", not the "Secret ID")</label>
+    <input type="password" name="ms_client_secret" placeholder="{{ 'Saved. Leave empty to keep the current secret' if has_secret else 'Paste the secret value' }}" autocomplete="off">
+    <div class="help">Secrets expire (you choose 6–24 months). When it expires, create a new one and paste it here.</div></div>
+</div>
+
+<div class="card">
+  <h2>General</h2>
+  <div class="row">
+    <div class="field"><label>Your time zone</label>
+      <select name="timezone">
+        {% for t in timezones %}<option value="{{ t }}" {{ 'selected' if t == tz }}>{{ t }}</option>{% endfor %}
+      </select>
+      <div class="help">Used for "sent today" limits and the times shown in the dashboard. India is <code>Asia/Kolkata</code>.</div></div>
+    <div class="field"><label>Check inboxes for replies every (minutes)</label>
+      <input type="number" name="inbox_check_minutes" min="1" max="60" value="{{ inbox_minutes }}"></div>
+  </div>
+</div>
+<button class="btn btn-primary">Save settings</button>
+</form>
+{% endblock %}

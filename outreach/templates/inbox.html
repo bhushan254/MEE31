@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Inbox{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Inbox</h1><div class="sub">Replies to your campaigns from every mailbox, in one place</div></div>
+  <div class="actions">
+    <form method="post" action="/mailboxes/check" class="inline"><button class="btn">↻ Check now</button></form>
+    <form method="post" action="/inbox/mark-all-read" class="inline"><button class="btn">Mark all read</button></form>
+  </div>
+</div>
+<div class="tabs">
+  <a href="?kind=reply" class="{{ 'active' if kind == 'reply' }}">Replies</a>
+  <a href="?kind=auto_reply" class="{{ 'active' if kind == 'auto_reply' }}">Auto-replies / Out of office</a>
+  <a href="?kind=bounce" class="{{ 'active' if kind == 'bounce' }}">Bounces</a>
+  <a href="?kind=all" class="{{ 'active' if kind == 'all' }}">All</a>
+</div>
+<div class="card tight">
+  {% if msgs %}
+  <table>
+    <tr><th>From</th><th>Message</th><th>Campaign</th><th>Label</th><th>Received</th></tr>
+    {% for m in msgs %}
+    <tr class="{{ 'unread' if not m.is_read }}">
+      <td><a href="/inbox/{{ m.id }}">{{ m.lead.full_name if m.lead and m.lead.full_name else m.from_email }}</a>
+        <div class="muted small">{{ m.lead.company if m.lead and m.lead.company else m.from_email }}</div></td>
+      <td><a href="/inbox/{{ m.id }}" style="color:inherit">{{ m.subject }}</a><div class="muted small truncate">{{ m.preview }}</div></td>
+      <td class="small">{{ m.campaign.name if m.campaign else '—' }}<div class="muted">to {{ m.to_email }}</div></td>
+      <td>{% if m.lead and m.lead.label %}<span class="pill {{ m.lead.label }}">{{ labels[m.lead.label] }}</span>{% elif m.kind != 'reply' %}<span class="pill {{ m.kind }}">{{ m.kind|replace('_',' ') }}</span>{% endif %}</td>
+      <td class="small muted" style="white-space:nowrap">{{ dt(m.created_at, "%d %b %H:%M") }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="pager">
+    {% if page_no > 1 %}<a class="btn btn-sm" href="?kind={{ kind }}&page={{ page_no - 1 }}">← Prev</a>{% endif %}
+    <span class="muted small">Page {{ page_no }} of {{ pages }}</span>
+    {% if page_no < pages %}<a class="btn btn-sm" href="?kind={{ kind }}&page={{ page_no + 1 }}">Next →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty"><h3>Nothing here yet</h3><p>Inboxes are checked automatically every few minutes.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

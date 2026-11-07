@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Blocklist{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Blocklist</h1><div class="sub">{{ total }} emails/domains that will never be emailed. Bounces and unsubscribes are added automatically.</div></div></div>
+<div class="card">
+  <form method="post" action="/blocklist/add">
+    <label>Add emails or domains</label>
+    <div class="field"><textarea name="values" style="min-height:80px" placeholder="one per line, e.g.&#10;someone@company.com&#10;competitor.com"></textarea>
+      <div class="help">Adding a domain (e.g. <code>company.com</code>) blocks everyone at that company. Matching leads are removed from active campaigns.</div></div>
+    <button class="btn btn-primary">Add to blocklist</button>
+  </form>
+</div>
+<form method="get" class="row" style="margin-bottom:12px"><div class="field" style="margin:0;max-width:320px"><input type="search" name="q" value="{{ f_q }}" placeholder="Search"></div><div class="field" style="flex:0;margin:0"><button class="btn">Search</button></div></form>
+<div class="card tight">
+  {% if rows %}
+  <table>
+    <tr><th>Email / domain</th><th>Type</th><th>Reason</th><th>Added</th><th></th></tr>
+    {% for r in rows %}
+    <tr><td>{{ r.value }}</td><td class="muted">{{ r.kind }}</td><td><span class="pill {{ 'bounced' if r.reason == 'bounce' else ('unsubscribed' if r.reason == 'unsubscribed' else '') }}">{{ r.reason }}</span></td>
+      <td class="muted small">{{ dt(r.created_at) }}</td>
+      <td><form method="post" action="/blocklist/{{ r.id }}/delete" class="inline" onsubmit="return confirm('Remove from blocklist?')"><button class="btn-link small">remove</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">The blocklist is empty.</div>{% endif %}
+</div>
+{% endblock %}

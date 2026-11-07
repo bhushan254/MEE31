@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Setup guide{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Setup guide</h1><div class="sub">One-time setup to connect your Microsoft email IDs (about 15 minutes)</div></div></div>
+
+<div class="card guide-step">
+  <h2><span class="n">1</span> Register the app in Microsoft (one time)</h2>
+  <p>This gives the tool permission to send and read email for the mailboxes <b>you</b> sign in with. Do it with your Microsoft 365 <b>admin</b> account.</p>
+  <ol>
+    <li>Open <a href="https://entra.microsoft.com" target="_blank" rel="noopener">entra.microsoft.com</a> and sign in with your admin account.</li>
+    <li>In the left menu go to <b>Identity → Applications → App registrations</b> (or search "App registrations" at the top).</li>
+    <li>Click <b>+ New registration</b>.
+      <ul>
+        <li><b>Name:</b> <code>My Outreach Tool</code> (anything you like)</li>
+        <li><b>Supported account types:</b> "Accounts in this organizational directory only (Single tenant)"</li>
+        <li><b>Redirect URI:</b> choose platform <b>Web</b> and paste:
+          <div class="copy" style="max-width:480px;margin-top:4px"><input type="text" id="ru" value="{{ redirect_uri }}" readonly><button type="button" class="btn" onclick="copyText('ru')">Copy</button></div></li>
+      </ul>
+      Click <b>Register</b>.</li>
+    <li>You're now on the app's <b>Overview</b> page. Copy the <b>Application (client) ID</b> and the <b>Directory (tenant) ID</b>. You'll paste them in Settings.</li>
+  </ol>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">2</span> Add the email permissions</h2>
+  <ol>
+    <li>In the app's left menu click <b>API permissions → + Add a permission → Microsoft Graph → Delegated permissions</b>.</li>
+    <li>Search and tick: <code>Mail.Send</code>, <code>Mail.ReadWrite</code>, <code>offline_access</code> (<code>User.Read</code> is already there).</li>
+    <li>Click <b>Add permissions</b>, then <b>Grant admin consent for (your company)</b> and confirm. All rows should show a green tick.</li>
+  </ol>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">3</span> Create a client secret</h2>
+  <ol>
+    <li>Left menu: <b>Certificates &amp; secrets → Client secrets → + New client secret</b>.</li>
+    <li>Description: <code>outreach</code>. Expires: <b>24 months</b>. Click <b>Add</b>.</li>
+    <li>Copy the <b>Value</b> right away (not the "Secret ID"). Microsoft only shows it once.</li>
+  </ol>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">4</span> Paste the details into Settings</h2>
+  <p>Go to <a href="/settings">Settings</a> and paste the <b>Client ID</b>, <b>Tenant ID</b> and <b>Client secret value</b>. Choose your time zone and click Save.</p>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">5</span> Connect your email IDs</h2>
+  <ol>
+    <li>Go to <a href="/mailboxes">Mailboxes</a> and click <b>Connect Microsoft mailbox</b>.</li>
+    <li>Sign in with the first email ID and accept the permissions.</li>
+    <li>Repeat for every email ID: click Connect again and choose <b>"Use another account"</b>.</li>
+    <li>Set each mailbox's daily limit (e.g. 25) and signature, and send yourself a <b>test email</b>.</li>
+  </ol>
+  <div class="info-box small">Each email ID must be a real (licensed) mailbox you can sign in to. If an email ID is only an alias, it can't sign in. Use its main mailbox instead.</div>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">6</span> Run your first campaign</h2>
+  <ol>
+    <li><a href="/leads">Leads</a>: upload your CSV and give the list a name.</li>
+    <li><a href="/campaigns">Campaigns</a>: create a campaign, write email 1 and follow-ups, and click <b>Preview</b> to check them.</li>
+    <li><b>Leads</b> tab: add your list. <b>Schedule &amp; settings</b> tab: pick mailboxes, your leads' time zone and sending hours.</li>
+    <li>Click <b>Start campaign</b>. Keep this window (and your PC) on during sending hours. If the PC is off, sending simply continues next time.</li>
+  </ol>
+</div>
+
+<div class="card guide-step">
+  <h2><span class="n">✓</span> Deliverability checklist</h2>
+  <ul>
+    <li>Each domain has <b>SPF, DKIM and DMARC</b> set up in Microsoft 365 (Admin center → Settings → Domains, and Defender → Email authentication → DKIM).</li>
+    <li>Keep each mailbox at <b>20–30 emails/day</b>, including follow-ups.</li>
+    <li>Verify your lead list before uploading. Keep bounces under 2–3%. The tool auto-pauses a campaign above your limit.</li>
+    <li>Plain-text style, short emails, max one link, no attachments or images.</li>
+    <li>Watch the <a href="/activity">Activity log</a> for errors. If Microsoft blocks a mailbox, it's paused automatically.</li>
+  </ul>
+</div>
+{% endblock %}

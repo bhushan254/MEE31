@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.email }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/leads">← Leads</a></div>
+    <h1>{{ lead.full_name or lead.email }}</h1>
+    <div class="sub">{{ lead.email }} · <span class="pill {{ lead.status }}">{{ lead.status }}</span>
+      {% if suppressed %}<span class="pill error">on blocklist</span>{% endif %}</div>
+  </div>
+  <div class="actions">
+    {% if not suppressed %}
+    <form method="post" action="/leads/{{ lead.id }}/block" class="inline" onsubmit="return confirm('Never email this person again?')"><button class="btn btn-danger">Add to blocklist</button></form>
+    {% endif %}
+    <form method="post" action="/leads/{{ lead.id }}/delete" class="inline" onsubmit="return confirm('Delete this lead?')"><button class="btn btn-danger">Delete</button></form>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Details</h2>
+    <form method="post" action="/leads/{{ lead.id }}/update">
+      <div class="row">
+        <div class="field"><label>First name</label><input type="text" name="first_name" value="{{ lead.first_name }}"></div>
+        <div class="field"><label>Last name</label><input type="text" name="last_name" value="{{ lead.last_name }}"></div>
+      </div>
+      <div class="field"><label>Company</label><input type="text" name="company" value="{{ lead.company }}"></div>
+      <div class="field"><label>Label</label>
+        <select name="label"><option value="">— none —</option>
+          {% for k, v in labels.items() %}<option value="{{ k }}" {{ 'selected' if k == lead.label }}>{{ v }}</option>{% endfor %}</select>
+        <div class="help">Setting a label stops automatic follow-ups to this lead.</div></div>
+      <div class="field"><label>Notes</label><textarea name="notes" style="min-height:80px">{{ lead.notes }}</textarea></div>
+      <button class="btn btn-primary">Save</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Custom fields</h2>
+    {% if lead.fields %}
+    <table>{% for k, v in lead.fields.items() %}<tr><td><code>{{ '{{' ~ k ~ '}}' }}</code></td><td>{{ v }}</td></tr>{% endfor %}</table>
+    {% else %}<p class="muted">None</p>{% endif %}
+    <h2 style="margin-top:18px">Campaigns</h2>
+    {% for cl in cls %}
+      <div><a href="/campaigns/{{ cl.campaign_id }}">{{ cl.campaign.name }}</a> · <span class="pill {{ cl.status }}">{{ cl.status }}</span>
+        <span class="muted small">emails sent: {{ cl.next_step }}</span></div>
+    {% else %}<p class="muted">Not in any campaign</p>{% endfor %}
+    <p class="muted small" style="margin-top:12px">List: {{ lead.list_name }} · added {{ dt(lead.created_at) }}</p>
+  </div>
+</div>
+
+<h2>Conversation</h2>
+{% for m in msgs %}
+<div class="thread-msg {{ m.direction }}">
+  <div class="meta">
+    <div><b>{{ 'You' if m.direction == 'out' else m.from_email }}</b> → {{ m.to_email }} · <span class="pill {{ m.kind }}">{{ m.kind|replace('_', ' ') }}</span>
+      <div class="small">{{ m.subject }}</div></div>
+    <div class="muted small">{{ dt(m.created_at) }}</div>
+  </div>
+  <iframe sandbox="allow-same-origin allow-popups" srcdoc="{{ m.body_html }}" onload="fitFrame(this)"></iframe>
+</div>
+{% else %}
+<p class="muted">No emails yet.</p>
+{% endfor %}
+{% endblock %}

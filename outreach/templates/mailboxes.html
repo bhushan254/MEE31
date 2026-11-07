@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Mailboxes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Mailboxes</h1><div class="sub">Your Microsoft email IDs that send campaigns</div></div>
+  <div class="actions"><a href="/mailboxes/connect" class="btn btn-primary">+ Connect Microsoft mailbox</a></div>
+</div>
+
+{% if not ms_ready %}
+<div class="notice">Before connecting a mailbox, add your Microsoft app details in <a href="/settings">Settings</a> (see the <a href="/guide">setup guide</a>).</div>
+{% endif %}
+<div class="info-box small">When you click <b>Connect</b>, Microsoft asks you to sign in. Sign in with the email ID you want to add. To add your next email ID, click Connect again and choose <b>"Use another account"</b>.</div>
+
+{% for m, sent in rows %}
+<div class="card">
+  <div class="page-head" style="margin-bottom:10px">
+    <div>
+      <h2 style="margin-bottom:2px">{{ m.email }} <span class="pill {{ m.status }}">{{ m.status }}</span></h2>
+      <div class="muted small">Sent today: {{ sent }} / {{ m.daily_limit }} · last inbox check: {{ dt(m.last_inbox_check) }}</div>
+      {% if m.status_reason %}<div class="small" style="color:var(--red);margin-top:4px">{{ m.status_reason }}</div>{% endif %}
+    </div>
+    <div class="actions">
+      {% if m.status == 'reconnect' %}<a href="/mailboxes/connect" class="btn btn-primary btn-sm">Reconnect</a>{% endif %}
+      {% if m.status in ['active', 'paused', 'error'] %}
+      <form method="post" action="/mailboxes/{{ m.id }}/toggle" class="inline"><button class="btn btn-sm">{{ 'Pause' if m.status == 'active' else 'Resume' }}</button></form>
+      {% endif %}
+      <form method="post" action="/mailboxes/{{ m.id }}/delete" class="inline" onsubmit="return confirm('Remove {{ m.email }}? Campaigns will stop using it.')"><button class="btn btn-sm btn-danger">Remove</button></form>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <form method="post" action="/mailboxes/{{ m.id }}/update">
+      <div class="row">
+        <div class="field"><label>Sender name</label><input type="text" name="display_name" value="{{ m.display_name }}"><div class="help">Use in emails as <code>{{ '{{sender_name}}' }}</code> / <code>{{ '{{sender_first_name}}' }}</code></div></div>
+        <div class="field" style="max-width:150px"><label>Daily limit</label><input type="number" name="daily_limit" min="1" max="200" value="{{ m.daily_limit }}"><div class="help">20–30 is safe</div></div>
+      </div>
+      <div class="field"><label>Signature (added to the bottom of every email)</label>
+        <textarea name="signature" style="min-height:90px" placeholder="Your Name&#10;Founder, Your Company&#10;yourwebsite.com">{{ m.signature }}</textarea></div>
+      <button class="btn btn-primary btn-sm">Save</button>
+    </form>
+    <form method="post" action="/mailboxes/{{ m.id }}/test">
+      <label>Send a test email</label>
+      <p class="muted small">Sends one email from this mailbox so you can check it arrives (and isn't in spam).</p>
+      <div class="row"><div class="field"><input type="email" name="to" placeholder="your-personal@gmail.com" required></div>
+      <div class="field" style="flex:0"><button class="btn">Send test</button></div></div>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card empty"><h3>No mailboxes connected yet</h3><p>Click <b>Connect Microsoft mailbox</b> and sign in with your first email ID.</p></div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Activity log{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Activity log</h1><div class="sub">Everything the tool did: emails sent, replies, bounces, errors</div></div></div>
+<div class="tabs">
+  <a href="?" class="{{ 'active' if not level }}">All</a>
+  <a href="?level=error" class="{{ 'active' if level == 'error' }}">Errors</a>
+  <a href="?level=warn" class="{{ 'active' if level == 'warn' }}">Warnings</a>
+  <a href="?level=info" class="{{ 'active' if level == 'info' }}">Info</a>
+</div>
+<div class="card tight">
+  {% if events %}
+  <table>{% for e in events %}<tr><td style="width:160px" class="muted small">{{ dt(e.created_at) }}</td><td style="width:70px"><span class="pill {{ e.level }}">{{ e.level }}</span></td><td>{{ e.message }}</td></tr>{% endfor %}</table>
+  {% else %}<div class="empty">Nothing logged yet.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Outreach{% endblock %} · Outreach</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">✉</span> Outreach</div>
+    {% set path = request.url.path %}
+    <nav>
+      <a href="/" class="{{ 'active' if path == '/' }}">Overview</a>
+      <a href="/campaigns" class="{{ 'active' if path.startswith('/campaigns') }}">Campaigns</a>
+      <a href="/leads" class="{{ 'active' if path.startswith('/leads') }}">Leads</a>
+      <a href="/inbox" class="{{ 'active' if path.startswith('/inbox') }}">Inbox {% if unread %}<span class="badge">{{ unread }}</span>{% endif %}</a>
+      <a href="/mailboxes" class="{{ 'active' if path.startswith('/mailboxes') }}">Mailboxes</a>
+      <a href="/blocklist" class="{{ 'active' if path.startswith('/blocklist') }}">Blocklist</a>
+      <a href="/activity" class="{{ 'active' if path.startswith('/activity') }}">Activity log</a>
+      <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
+      <a href="/guide" class="{{ 'active' if path.startswith('/guide') }}">Setup guide</a>
+    </nav>
+    <form method="post" action="/sending/toggle" class="kill">
+      {% if sending_paused %}
+        <div class="kill-state paused">All sending is PAUSED</div>
+        <button class="btn btn-primary btn-block">Resume sending</button>
+      {% else %}
+        <div class="kill-state">Sending is on</div>
+        <button class="btn btn-block" onclick="return confirm('Pause ALL sending from every campaign?')">Pause all sending</button>
+      {% endif %}
+    </form>
+  </aside>
+  <main class="main">
+    {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

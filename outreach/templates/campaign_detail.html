@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/campaigns">← Campaigns</a></div>
+    <h1>{{ c.name }} <span class="pill {{ c.status }}">{{ c.status }}</span></h1>
+    <div class="sub">
+      {% for d in c.send_day_list %}{{ days[d] }}{{ ', ' if not loop.last }}{% endfor %}
+      · {{ '%02d'|format(c.start_hour) }}:00–{{ '%02d'|format(c.end_hour) }}:00 {{ c.timezone }}
+      · {% if in_window %}<span style="color:var(--green)">inside sending hours now</span>{% else %}outside sending hours now{% endif %}
+    </div>
+  </div>
+  <div class="actions">
+    {% if c.status == 'active' %}
+      <form method="post" action="/campaigns/{{ c.id }}/pause" class="inline"><button class="btn">⏸ Pause</button></form>
+    {% else %}
+      <form method="post" action="/campaigns/{{ c.id }}/start" class="inline"><button class="btn btn-green">▶ {{ 'Resume' if c.status == 'paused' else 'Start campaign' }}</button></form>
+    {% endif %}
+    <form method="post" action="/campaigns/{{ c.id }}/duplicate" class="inline"><button class="btn">Duplicate</button></form>
+    <form method="post" action="/campaigns/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Delete this campaign? Leads stay in your lead list.')"><button class="btn btn-danger">Delete</button></form>
+  </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom:18px">
+  <div class="stat"><div class="label">Leads</div><div class="value">{{ stats.total }}</div><div class="hint">{{ stats.active }} still in sequence · {{ stats.completed }} finished</div></div>
+  <div class="stat"><div class="label">Contacted</div><div class="value">{{ stats.contacted }}</div><div class="hint">{{ stats.sent }} emails sent in total</div></div>
+  <div class="stat"><div class="label">Replies</div><div class="value">{{ stats.replied }}</div><div class="hint">{{ "%.1f"|format(stats.reply_rate) }}% reply rate · {{ stats.interested }} interested</div></div>
+  <div class="stat"><div class="label">Bounced / Unsub</div><div class="value">{{ stats.bounced }} / {{ stats.unsubscribed }}</div><div class="hint">{{ "%.1f"|format(stats.bounce_rate) }}% bounce rate (auto-pause above {{ c.bounce_pause_pct|int }}%)</div></div>
+</div>
+
+<div class="tabs">
+  <a href="?tab=sequence" class="{{ 'active' if tab == 'sequence' }}">1. Emails</a>
+  <a href="?tab=leads" class="{{ 'active' if tab == 'leads' }}">2. Leads ({{ stats.total }})</a>
+  <a href="?tab=settings" class="{{ 'active' if tab == 'settings' }}">3. Schedule & settings</a>
+  <a href="?tab=activity" class="{{ 'active' if tab == 'activity' }}">Activity</a>
+</div>
+
+{% if tab == 'sequence' %}
+<div class="grid" style="grid-template-columns: minmax(0,1fr) 260px; align-items:start">
+  <form method="post" action="/campaigns/{{ c.id }}/steps">
+    <div id="steps">
+      {% for s in c.steps %}
+      <div class="step">
+        <div class="step-head">
+          <b class="step-no">{{ 'Email 1 (first email)' if loop.first else 'Email ' ~ loop.index ~ ' (follow-up)' }}</b>
+          <div class="delay" style="visibility: {{ 'hidden' if loop.first else 'visible' }}">
+            Send <input type="number" name="delay_days" min="0" max="60" value="{{ s.delay_days }}"> days after the previous email
+          </div>
+        </div>
+        <div class="field"><input type="text" name="subject" value="{{ s.subject }}" data-var-target
+          placeholder="{{ 'Subject (required)' if loop.first else 'Leave empty to reply in the same thread (recommended)' }}"></div>
+        <div class="field"><textarea name="body" data-var-target placeholder="Write your email...">{{ s.body }}</textarea></div>
+        <div class="actions">
+          <button type="button" class="btn btn-sm" onclick="previewStep(this, {{ c.id }})">👁 Preview</button>
+          <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" onclick="addStep()">+ Add follow-up</button>
+      <button class="btn btn-primary">Save emails</button>
+    </div>
+  </form>
+
+  <div>
+    <div class="card">
+      <h3>Personalize</h3>
+      <p class="muted small">Click a field in an email, then click a variable to insert it.</p>
+      <div class="var-list">
+        {% for v in variables %}<button type="button" onclick="insertVar('{{ v }}', this)">{{ '{{' ~ v ~ '}}' }}</button>{% endfor %}
+      </div>
+      <h3 style="margin-top:14px">Tips</h3>
+      <ul class="small muted" style="padding-left:18px;margin:0">
+        <li><b>Fallback:</b> <code>{{ '{{first_name|there}}' }}</code> uses "there" when the name is empty.</li>
+        <li><b>Spintax:</b> <code>{Hi|Hello|Hey}</code> picks one at random, so emails aren't all identical.</li>
+        <li>Plain text, short, 1 link at most. No images or attachments.</li>
+        <li>The signature (Mailboxes page) and opt-out line (Settings tab) are added automatically.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Preview as</h3>
+      <select id="preview-lead">
+        {% for l in sample_leads %}<option value="{{ l.id }}">{{ l.full_name or l.email }}{{ ' · ' ~ l.company if l.company }}</option>{% else %}<option value="">Sample lead (Jane Doe)</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<template id="step-template">
+  <div class="step">
+    <div class="step-head">
+      <b class="step-no">Follow-up</b>
+      <div class="delay">Send <input type="number" name="delay_days" min="0" max="60" value="3"> days after the previous email</div>
+    </div>
+    <div class="field"><input type="text" name="subject" value="" data-var-target placeholder="Leave empty to reply in the same thread (recommended)"></div>
+    <div class="field"><textarea name="body" data-var-target placeholder="Write your follow-up..."></textarea></div>
+    <div class="actions">
+      <button type="button" class="btn btn-sm" onclick="previewStep(this, {{ c.id }})">👁 Preview</button>
+      <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
+    </div>
+  </div>
+</template>
+
+<div class="modal-bg" id="preview-modal" onclick="if (event.target === this) closeModal('preview-modal')">
+  <div class="modal">
+    <div class="email-head">
+      <div class="small muted">From: <span id="pv-from"></span></div>
+      <div class="small muted">To: <span id="pv-to"></span></div>
+      <div><b>Subject:</b> <span id="pv-subject"></span></div>
+    </div>
+    <div class="notice small" id="pv-missing" style="display:none"></div>
+    <iframe id="pv-frame" sandbox="allow-same-origin"></iframe>
+    <div style="text-align:right;margin-top:12px"><button class="btn" onclick="closeModal('preview-modal')">Close</button></div>
+  </div>
+</div>
+
+{% elif tab == 'leads' %}
+<div class="card">
+  <h2>Add leads to this campaign</h2>
+  {% if lists %}
+  <form method="post" action="/campaigns/{{ c.id }}/leads/add" class="row">
+    <div class="field"><label>From list</label>
+      <select name="list_name">{% for name, n in lists %}<option value="{{ name }}">{{ name }} ({{ n }} leads)</option>{% endfor %}<option value="__all__">All lists</option></select></div>
+    <div class="field"><label class="check"><input type="checkbox" name="skip_contacted" checked> Skip leads already contacted or in another campaign</label></div>
+    <div class="field" style="flex:0"><button class="btn btn-primary">Add leads</button></div>
+  </form>
+  <p class="muted small" style="margin:0">Bounced, unsubscribed and blocklisted leads are never added.</p>
+  {% else %}
+  <p class="muted">You have no leads yet. <a href="/leads">Upload a CSV first</a>.</p>
+  {% endif %}
+</div>
+
+<form method="get" class="row" style="margin-bottom:12px">
+  <input type="hidden" name="tab" value="leads">
+  <div class="field" style="margin:0;max-width:240px"><select name="status" onchange="this.form.submit()"><option value="">All statuses</option>
+    {% for s in ['active','completed','replied','bounced','unsubscribed','stopped','failed'] %}<option value="{{ s }}" {{ 'selected' if s == f_status }}>{{ s|capitalize }}</option>{% endfor %}</select></div>
+</form>
+
+<div class="card tight">
+  {% if cls %}
+  <table>
+    <tr><th>Lead</th><th>Status</th><th>Progress</th><th>Next email</th><th>Mailbox</th><th></th></tr>
+    {% for cl in cls %}
+    <tr>
+      <td><a href="/leads/{{ cl.lead_id }}">{{ cl.lead.email }}</a><div class="muted small">{{ cl.lead.full_name }}{{ ' · ' ~ cl.lead.company if cl.lead.company }}</div></td>
+      <td><span class="pill {{ cl.status }}">{{ cl.status }}</span>{% if cl.error %}<div class="small" style="color:var(--red)">{{ cl.error[:120] }}</div>{% endif %}</td>
+      <td>{{ cl.next_step }} / {{ c.steps|length }} sent</td>
+      <td class="small">{% if cl.status == 'active' %}{{ 'as soon as possible' if cl.next_step == 0 else dt(cl.next_send_at) }}{% else %}—{% endif %}</td>
+      <td class="small muted">{{ cl.mailbox.email if cl.mailbox else 'auto' }}</td>
+      <td><form method="post" action="/campaigns/{{ c.id }}/leads/{{ cl.id }}/remove" class="inline"><button class="btn-link small">remove</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="pager">
+    {% if page_no > 1 %}<a class="btn btn-sm" href="?tab=leads&status={{ f_status }}&page={{ page_no - 1 }}">← Prev</a>{% endif %}
+    <span class="muted small">Page {{ page_no }} of {{ pages }} · {{ total }} leads</span>
+    {% if page_no < pages %}<a class="btn btn-sm" href="?tab=leads&status={{ f_status }}&page={{ page_no + 1 }}">Next →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty">No leads in this campaign yet.</div>
+  {% endif %}
+</div>
+
+{% elif tab == 'settings' %}
+<form method="post" action="/campaigns/{{ c.id }}/settings">
+<div class="card">
+  <h2>General</h2>
+  <div class="field"><label>Campaign name</label><input type="text" name="name" value="{{ c.name }}"></div>
+  <label>Send from these mailboxes</label>
+  <p class="help">Emails rotate across the selected mailboxes. Follow-ups always come from the same mailbox as the first email.</p>
+  {% for m in all_mailboxes %}
+    <label class="check"><input type="checkbox" name="mailbox_ids" value="{{ m.id }}" {{ 'checked' if m in c.mailboxes }}> {{ m.email }} <span class="pill {{ m.status }}">{{ m.status }}</span> <span class="muted small">({{ m.daily_limit }}/day)</span></label><br>
+  {% else %}
+    <p class="muted"><a href="/mailboxes">Connect a mailbox</a> first.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Sending schedule</h2>
+  <div class="field"><label>Time zone of your leads</label>
+    <select name="timezone">{% for t in timezones %}<option value="{{ t }}" {{ 'selected' if t == c.timezone }}>{{ t }}</option>{% endfor %}</select>
+    <div class="help">Emails go out during business hours in this time zone (e.g. <code>America/New_York</code> for US East, <code>Europe/London</code>, <code>Asia/Kolkata</code>).</div></div>
+  <div class="field"><label>Days</label>
+    {% for d in days %}<label class="check"><input type="checkbox" name="send_days" value="{{ loop.index0 }}" {{ 'checked' if loop.index0 in c.send_day_list }}> {{ d }}</label>{% endfor %}</div>
+  <div class="row">
+    <div class="field"><label>From</label><select name="start_hour">{% for h in range(0, 24) %}<option value="{{ h }}" {{ 'selected' if h == c.start_hour }}>{{ '%02d'|format(h) }}:00</option>{% endfor %}</select></div>
+    <div class="field"><label>Until</label><select name="end_hour">{% for h in range(1, 25) %}<option value="{{ h }}" {{ 'selected' if h == c.end_hour }}>{{ '%02d'|format(h) }}:00</option>{% endfor %}</select></div>
+    <div class="field"><label>Wait between emails (min minutes)</label><input type="number" name="min_gap_minutes" min="1" value="{{ c.min_gap_minutes }}"></div>
+    <div class="field"><label>(max minutes)</label><input type="number" name="max_gap_minutes" min="1" value="{{ c.max_gap_minutes }}"></div>
+  </div>
+  <div class="help">Each mailbox waits a random time between these values after every email, so sending looks human. Daily limits are set per mailbox on the Mailboxes page.</div>
+  <div class="field" style="margin-top:12px;max-width:320px"><label>Max NEW leads per day for this campaign</label><input type="number" name="max_new_per_day" min="0" value="{{ c.max_new_per_day }}"><div class="help">0 = only the mailbox daily limits apply.</div></div>
+</div>
+
+<div class="card">
+  <h2>Safety</h2>
+  <label class="check"><input type="checkbox" name="stop_on_reply" {{ 'checked' if c.stop_on_reply }}> Stop sending follow-ups when a lead replies</label>
+  <div class="field" style="margin-top:12px;max-width:320px"><label>Auto-pause campaign if bounce rate goes above (%)</label><input type="number" name="bounce_pause_pct" min="1" max="50" value="{{ c.bounce_pause_pct|int }}"><div class="help">Checked after at least 10 leads are contacted.</div></div>
+  <label class="check"><input type="checkbox" name="include_optout" {{ 'checked' if c.include_optout }}> Add an opt-out line to every email</label>
+  <div class="field" style="margin-top:8px"><textarea name="optout_text" style="min-height:60px">{{ c.optout_text }}</textarea>
+    <div class="help">When someone replies "unsubscribe", "remove me", "stop" etc., they are automatically blocklisted and removed from all campaigns.</div></div>
+</div>
+<button class="btn btn-primary">Save settings</button>
+</form>
+
+{% else %}
+<div class="card tight">
+  {% if events %}
+  <table>{% for e in events %}<tr><td style="width:150px" class="muted small">{{ dt(e.created_at, "%d %b %H:%M") }}</td><td style="width:70px"><span class="pill {{ e.level }}">{{ e.level }}</span></td><td>{{ e.message }}</td></tr>{% endfor %}</table>
+  {% else %}<div class="empty">No activity yet.</div>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

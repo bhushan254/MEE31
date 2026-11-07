@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Campaigns{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Campaigns</h1><div class="sub">Each campaign is a sequence of emails sent to a set of leads</div></div>
+  <form method="post" action="/campaigns" class="actions">
+    <input type="text" name="name" placeholder="New campaign name" style="width:240px" required>
+    <button class="btn btn-primary">+ Create campaign</button>
+  </form>
+</div>
+
+<div class="card tight">
+  {% if rows %}
+  <table>
+    <tr><th>Campaign</th><th>Status</th><th class="num">Leads</th><th class="num">Contacted</th><th class="num">Emails sent</th><th class="num">Replies</th><th class="num">Bounced</th><th class="num">Interested</th></tr>
+    {% for c, s in rows %}
+    <tr>
+      <td><a href="/campaigns/{{ c.id }}"><b>{{ c.name }}</b></a><div class="muted small">{{ c.steps|length }} step{{ '' if c.steps|length == 1 else 's' }} · {{ c.mailboxes|length }} mailbox{{ '' if c.mailboxes|length == 1 else 'es' }}</div></td>
+      <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
+      <td class="num">{{ s.total }}</td>
+      <td class="num">{{ s.contacted }}</td>
+      <td class="num">{{ s.sent }}</td>
+      <td class="num">{{ s.replied }} <span class="muted small">({{ "%.1f"|format(s.reply_rate) }}%)</span></td>
+      <td class="num">{{ s.bounced }} <span class="muted small">({{ "%.1f"|format(s.bounce_rate) }}%)</span></td>
+      <td class="num">{{ s.interested }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty"><h3>No campaigns yet</h3><p>Type a name above and click <b>Create campaign</b>.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

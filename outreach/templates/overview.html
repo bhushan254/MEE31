@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <div class="sub">
+      Sending engine:
+      {% if sending_paused %}<span class="pill error">paused (global)</span>
+      {% elif engine_running %}<span class="pill active">running</span>
+      {% else %}<span class="pill paused">not running</span>{% endif %}
+      {% if last_tick %}<span class="muted small">· last check {{ dt(last_tick, "%H:%M:%S") }}</span>{% endif %}
+      <span class="muted small">· times shown in {{ tz }}</span>
+    </div>
+  </div>
+  <div class="actions">
+    <form method="post" action="/mailboxes/check" class="inline"><button class="btn">Check inboxes now</button></form>
+    <a href="/campaigns" class="btn btn-primary">Campaigns</a>
+  </div>
+</div>
+
+{% if not (setup.ms and setup.timezone and setup.mailbox and setup.leads and setup.campaign) %}
+<div class="card">
+  <h2>Getting started</h2>
+  <ul class="checklist">
+    <li class="{{ 'done' if setup.ms }}"><span class="tick">{{ '✓' if setup.ms else '1' }}</span>
+      <div>Add your Microsoft app details. <a href="/guide">Follow the setup guide</a>, then paste them in <a href="/settings">Settings</a>.</div></li>
+    <li class="{{ 'done' if setup.timezone }}"><span class="tick">{{ '✓' if setup.timezone else '2' }}</span>
+      <div>Choose your time zone in <a href="/settings">Settings</a>.</div></li>
+    <li class="{{ 'done' if setup.mailbox }}"><span class="tick">{{ '✓' if setup.mailbox else '3' }}</span>
+      <div>Connect your Microsoft email IDs on the <a href="/mailboxes">Mailboxes</a> page.</div></li>
+    <li class="{{ 'done' if setup.leads }}"><span class="tick">{{ '✓' if setup.leads else '4' }}</span>
+      <div>Upload your lead list (CSV) on the <a href="/leads">Leads</a> page.</div></li>
+    <li class="{{ 'done' if setup.campaign }}"><span class="tick">{{ '✓' if setup.campaign else '5' }}</span>
+      <div>Create a campaign, write your emails, add leads and press Start on the <a href="/campaigns">Campaigns</a> page.</div></li>
+  </ul>
+</div>
+{% endif %}
+
+<div class="grid grid-4" style="margin-bottom:18px">
+  <div class="stat"><div class="label">Sent today</div><div class="value">{{ sent_today_total }} <span class="muted small">/ {{ capacity }}</span></div><div class="hint">across all mailboxes</div></div>
+  <div class="stat"><div class="label">Sent (7 days)</div><div class="value">{{ sent_7 }}</div><div class="hint">campaign emails</div></div>
+  <div class="stat"><div class="label">Replies (7 days)</div><div class="value">{{ replies_7 }}</div><div class="hint">{{ "%.1f"|format(reply_rate_7) }}% reply rate</div></div>
+  <div class="stat"><div class="label">Bounce rate (30 days)</div><div class="value" style="color: {{ 'var(--red)' if bounce_rate_30 > 3 else 'inherit' }}">{{ "%.1f"|format(bounce_rate_30) }}%</div><div class="hint">keep this under 2–3%</div></div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card tight">
+    <h2>Mailboxes today</h2>
+    {% if mb_rows %}
+    <table>
+      <tr><th>Mailbox</th><th>Status</th><th>Sent today</th></tr>
+      {% for m, sent in mb_rows %}
+      <tr>
+        <td>{{ m.email }}</td>
+        <td><span class="pill {{ m.status }}">{{ m.status }}</span></td>
+        <td style="min-width:120px">{{ sent }} / {{ m.daily_limit }}
+          <div class="progress {{ 'full' if sent >= m.daily_limit }}"><div style="width: {{ [100, (sent * 100 / (m.daily_limit or 1))]|min }}%"></div></div></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No mailboxes yet. <a href="/mailboxes">Connect one</a>.</div>
+    {% endif %}
+  </div>
+
+  <div class="card tight">
+    <h2>Latest replies</h2>
+    {% if recent_replies %}
+    <table>
+      {% for m in recent_replies %}
+      <tr class="{{ 'unread' if not m.is_read }}">
+        <td><a href="/inbox/{{ m.id }}">{{ m.lead.full_name if m.lead and m.lead.full_name else m.from_email }}</a>
+          <div class="muted small truncate">{{ m.preview }}</div></td>
+        <td class="muted small" style="white-space:nowrap">{{ dt(m.created_at, "%d %b %H:%M") }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No replies yet. They show up here automatically.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card tight">
+  <h2>Recent activity <a href="/activity" class="small" style="font-weight:400">see all</a></h2>
+  {% if events %}
+  <table>
+    {% for e in events %}
+    <tr><td style="width:150px" class="muted small">{{ dt(e.created_at, "%d %b %H:%M") }}</td>
+        <td style="width:70px"><span class="pill {{ e.level }}">{{ e.level }}</span></td>
+        <td>{{ e.message }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">Nothing yet.</div>
+  {% endif %}
+</div>
+{% endblock %}
