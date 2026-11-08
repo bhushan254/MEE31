@@ -1,0 +1,83 @@
+{# Shared email-sequence editor. Needs: steps, form_action, preview_url, save_label, variables, sample_leads.
+   Optional: name_label + name_value (shows a name field at the top). #}
+<div class="grid editor-grid">
+  <form method="post" action="{{ form_action }}">
+    {% if name_label %}
+    <div class="field"><label>{{ name_label }}</label><input type="text" name="name" value="{{ name_value }}" required></div>
+    {% endif %}
+    <div id="steps">
+      {% for s in steps %}
+      <div class="step">
+        <div class="step-head">
+          <b class="step-no">{{ 'Email 1 (first email)' if loop.first else 'Email ' ~ loop.index ~ ' (follow-up)' }}</b>
+          <div class="delay" style="visibility: {{ 'hidden' if loop.first else 'visible' }}">
+            Send <input type="number" name="delay_days" min="0" max="60" value="{{ s.delay_days }}"> days after the previous email
+          </div>
+        </div>
+        <div class="field"><input type="text" name="subject" value="{{ s.subject }}" data-var-target
+          placeholder="{{ 'Subject (required)' if loop.first else 'Leave empty to reply in the same thread (recommended)' }}"></div>
+        <div class="field"><textarea name="body" data-var-target placeholder="Write your email...">{{ s.body }}</textarea></div>
+        <div class="actions">
+          <button type="button" class="btn btn-sm" onclick="previewStep(this, '{{ preview_url }}')">👁 Preview</button>
+          <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" onclick="addStep()">+ Add follow-up</button>
+      <button class="btn btn-primary">{{ save_label }}</button>
+    </div>
+  </form>
+
+  <div>
+    <div class="card">
+      <h3>Personalize</h3>
+      <p class="muted small">Click a field in an email, then click a variable to insert it.</p>
+      <div class="var-list">
+        {% for v in variables %}<button type="button" onclick="insertVar('{{ v }}', this)">{{ '{{' ~ v ~ '}}' }}</button>{% endfor %}
+      </div>
+      <h3 style="margin-top:14px">Tips</h3>
+      <ul class="small muted" style="padding-left:18px;margin:0">
+        <li><b>Fallback:</b> <code>{{ '{{first_name|there}}' }}</code> uses "there" when the name is empty.</li>
+        <li><b>Spintax:</b> <code>{Hi|Hello|Hey}</code> picks one at random, so emails aren't all identical.</li>
+        <li>Plain text, short, 1 link at most. No images or attachments.</li>
+        <li>The signature (Mailboxes page), opt-out line and unsubscribe link (campaign settings) are added automatically.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Preview as</h3>
+      <select id="preview-lead">
+        {% for l in sample_leads %}<option value="{{ l.id }}">{{ l.full_name or l.email }}{{ ' · ' ~ l.company if l.company }}</option>{% else %}<option value="">Sample lead (Jane Doe)</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<template id="step-template">
+  <div class="step">
+    <div class="step-head">
+      <b class="step-no">Follow-up</b>
+      <div class="delay">Send <input type="number" name="delay_days" min="0" max="60" value="3"> days after the previous email</div>
+    </div>
+    <div class="field"><input type="text" name="subject" value="" data-var-target placeholder="Leave empty to reply in the same thread (recommended)"></div>
+    <div class="field"><textarea name="body" data-var-target placeholder="Write your follow-up..."></textarea></div>
+    <div class="actions">
+      <button type="button" class="btn btn-sm" onclick="previewStep(this, '{{ preview_url }}')">👁 Preview</button>
+      <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
+    </div>
+  </div>
+</template>
+
+<div class="modal-bg" id="preview-modal" onclick="if (event.target === this) closeModal('preview-modal')">
+  <div class="modal">
+    <div class="email-head">
+      <div class="small muted">From: <span id="pv-from"></span></div>
+      <div class="small muted">To: <span id="pv-to"></span></div>
+      <div><b>Subject:</b> <span id="pv-subject"></span></div>
+    </div>
+    <div class="notice small" id="pv-missing" style="display:none"></div>
+    <iframe id="pv-frame" sandbox="allow-same-origin allow-popups"></iframe>
+    <div style="text-align:right;margin-top:12px"><button type="button" class="btn" onclick="closeModal('preview-modal')">Close</button></div>
+  </div>
+</div>

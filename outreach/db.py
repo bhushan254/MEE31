@@ -20,7 +20,9 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    inspect,
     select,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -119,6 +121,8 @@ class Campaign(Base):
         default="P.S. If this isn't relevant for you, just reply \"unsubscribe\" and I won't email you again.",
     )
     bounce_pause_pct: Mapped[float] = mapped_column(Float, default=5.0)
+    include_unsub_link: Mapped[bool] = mapped_column(Boolean, default=True)
+    unsub_link_text: Mapped[str] = mapped_column(String(100), default="Unsubscribe")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     steps: Mapped[list["Step"]] = relationship(
@@ -140,6 +144,18 @@ class Step(Base):
     subject: Mapped[str] = mapped_column(Text, default="")
     body: Mapped[str] = mapped_column(Text, default="")
     campaign: Mapped[Campaign] = relationship(back_populates="steps")
+
+
+class Template(Base):
+    """A saved email copy: first email + follow-ups, reusable in any campaign."""
+
+    __tablename__ = "templates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # [{"subject": str, "body": str, "delay_days": int}, ...]
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class CampaignLead(Base):
@@ -245,8 +261,42 @@ def init_db(url: str | None = None):
             cur.close()
 
     Base.metadata.create_all(engine)
+    upgrade_schema(engine)
     SessionLocal.configure(bind=engine)
     return engine
+
+
+def _sql_literal(value) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def upgrade_schema(eng) -> list[str]:
+    """Add columns that newer versions introduced to an existing database.
+
+    This is what lets you install an update and keep all your data: new tables are
+    created by create_all, and new columns on existing tables are added here.
+    """
+    added = []
+    insp = inspect(eng)
+    with eng.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(dialect=eng.dialect)}'
+                default = col.default.arg if col.default is not None and col.default.is_scalar else None
+                if default is not None:
+                    sql += f" DEFAULT {_sql_literal(default)}"
+                conn.execute(text(sql))
+                added.append(f"{table.name}.{col.name}")
+    return added
 
 
 # ---------------------------------------------------------------- settings helpers
@@ -259,6 +309,8 @@ DEFAULT_SETTINGS = {
     "inbox_check_minutes": "5",
     "sending_paused": "0",
     "base_url": "http://localhost:8000",
+    "public_url": "",
+    "app_secret": "",
 }
 
 

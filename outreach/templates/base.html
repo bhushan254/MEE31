@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Outreach{% endblock %} · Outreach</title>
+  <title>{% block title %}Hello box{% endblock %} · Hello box</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand"><span class="logo">✉</span> Outreach</div>
+    <div class="brand"><span class="logo">✉</span> Hello box</div>
     {% set path = request.url.path %}
     <nav>
       <a href="/" class="{{ 'active' if path == '/' }}">Overview</a>
       <a href="/campaigns" class="{{ 'active' if path.startswith('/campaigns') }}">Campaigns</a>
+      <a href="/templates" class="{{ 'active' if path.startswith('/templates') }}">Templates</a>
       <a href="/leads" class="{{ 'active' if path.startswith('/leads') }}">Leads</a>
       <a href="/inbox" class="{{ 'active' if path.startswith('/inbox') }}">Inbox {% if unread %}<span class="badge">{{ unread }}</span>{% endif %}</a>
       <a href="/mailboxes" class="{{ 'active' if path.startswith('/mailboxes') }}">Mailboxes</a>

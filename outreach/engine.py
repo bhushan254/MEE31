@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, or_, select
 
 from . import graph
+from .unsubscribe import link_html
 from .db import (
     Campaign,
     CampaignLead,
@@ -176,7 +177,7 @@ def compose(session, campaign: Campaign, step_index: int, lead: Lead, mailbox: M
     return {
         "subject": subject.strip(),
         "body_text": body,
-        "html": build_email_html(body, signature, optout),
+        "html": build_email_html(body, signature, optout, link_html(session, campaign, lead, mailbox)),
         "missing": sorted(miss1 | miss2),
     }
 
@@ -380,6 +381,23 @@ def is_auto_reply(subject: str, headers: list | None) -> bool:
     return False
 
 
+def is_unsubscribe_request(subject: str, text: str) -> bool:
+    """A reply saying unsubscribe/stop, or the email created by clicking the unsubscribe link."""
+    subj = re.sub(r"^\s*((re|aw|sv|fw|fwd)\s*:\s*)+", "", subject or "", flags=re.I).strip()
+    if UNSUB_RE.search(subj) and not (subject or "").lower().startswith(("re:", "aw:")):
+        return True
+    if subj.lower().rstrip(".!") in ("unsubscribe", "stop", "remove"):
+        return True
+    return bool(UNSUB_RE.search((text or "")[:600])) or (text or "").strip().lower().rstrip(".!") in ("stop", "remove")
+
+
+def unsubscribe_lead(session, lead: Lead, how: str, campaign_id=None, mailbox_id=None) -> None:
+    lead.status = "unsubscribed"
+    add_suppression(session, lead.email, "unsubscribed")
+    stop_lead_everywhere(session, lead, "unsubscribed")
+    log_event(session, f"{lead.email} unsubscribed ({how}). Added to blocklist.", "warn", campaign_id, mailbox_id)
+
+
 def bounce_check(session, campaign: Campaign) -> None:
     contacted = session.scalar(
         select(func.count(CampaignLead.id)).where(
@@ -486,11 +504,8 @@ def handle_inbound(session, mailbox: Mailbox, m: dict) -> str | None:
         )
     )
     if kind == "reply":
-        if UNSUB_RE.search(unique_text[:600]) or unique_text.strip().lower().rstrip(".!") in ("stop", "remove"):
-            lead.status = "unsubscribed"
-            add_suppression(session, lead.email, "unsubscribed")
-            stop_lead_everywhere(session, lead, "unsubscribed")
-            log_event(session, f"{lead.email} asked to unsubscribe. Added to blocklist.", "warn", out.campaign_id, mailbox.id)
+        if is_unsubscribe_request(subject, unique_text):
+            unsubscribe_lead(session, lead, "by email", out.campaign_id, mailbox.id)
         else:
             if lead.status not in ("unsubscribed", "bounced"):
                 lead.status = "replied"

@@ -1,5 +1,5 @@
 @echo off
-title Outreach dashboard
+title Hello box
 cd /d "%~dp0"
 
 set "PY="

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Templates{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Templates</h1><div class="sub">Your saved email copies: first email plus follow-ups. Reuse them in any campaign.</div></div>
+  <form method="post" action="/templates" class="actions">
+    <input type="text" name="name" placeholder="New template name" style="width:240px" required>
+    <button class="btn btn-primary">+ New template</button>
+  </form>
+</div>
+
+{% for t in rows %}
+<div class="card">
+  <div class="page-head" style="margin-bottom:8px">
+    <div>
+      <h2 style="margin-bottom:2px"><a href="/templates/{{ t.id }}">{{ t.name }}</a></h2>
+      <div class="muted small">{{ t.steps|length }} email{{ '' if t.steps|length == 1 else 's' }}
+        (first email{% if t.steps|length > 1 %} + {{ t.steps|length - 1 }} follow-up{{ '' if t.steps|length == 2 else 's' }}{% endif %})
+        · updated {{ dt(t.updated_at, "%d %b %Y") }}</div>
+    </div>
+    <div class="actions">
+      <a href="/templates/{{ t.id }}" class="btn btn-sm">Edit</a>
+      <form method="post" action="/templates/{{ t.id }}/duplicate" class="inline"><button class="btn btn-sm">Duplicate</button></form>
+      <form method="post" action="/templates/{{ t.id }}/delete" class="inline" onsubmit="return confirm('Delete template {{ t.name|replace("'", "") }}? Campaigns that used it keep their emails.')"><button class="btn btn-sm btn-danger">Delete</button></form>
+    </div>
+  </div>
+  {% if t.steps %}
+  <div class="tpl-preview">
+    {% for st in t.steps %}
+    <div class="tpl-step">
+      <div class="small muted">{{ 'Email 1' if loop.first else 'Follow-up ' ~ (loop.index - 1) ~ ' · after ' ~ st.delay_days ~ ' day' ~ ('' if st.delay_days == 1 else 's') }}</div>
+      <div class="small"><b>{{ st.subject or '(same thread)' }}</b></div>
+      <div class="small muted tpl-body">{{ st.body[:220] }}{{ '…' if st.body|length > 220 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <form method="post" action="/templates/{{ t.id }}/use" class="row use-row">
+    <div class="field" style="margin:0"><label class="small">Add to campaign</label>
+      <select name="campaign_id" onchange="this.form.querySelector('.new-name').style.display = this.value === 'new' ? '' : 'none'">
+        <option value="new">➕ New campaign</option>
+        {% for c in campaigns %}<option value="{{ c.id }}">{{ c.name }} ({{ c.status }})</option>{% endfor %}
+      </select></div>
+    <div class="field new-name" style="margin:0"><label class="small">New campaign name</label><input type="text" name="campaign_name" placeholder="{{ t.name }}"></div>
+    <div class="field" style="flex:0;margin:0">
+      <button class="btn btn-primary" onclick="const s = this.form.campaign_id; return s.value === 'new' || confirm('This replaces the emails of the selected campaign with this template. Continue?')">Add to campaign</button></div>
+  </form>
+</div>
+{% else %}
+<div class="card empty">
+  <h3>No templates yet</h3>
+  <p>Type a name above and click <b>New template</b>, then paste in your email copy and follow-ups.<br>
+  You can also open any campaign and click <b>Save these emails as a template</b>.</p>
+</div>
+{% endfor %}
+{% endblock %}

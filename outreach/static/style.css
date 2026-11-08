@@ -108,6 +108,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #c5d0fa; border-c
 .tabs a.active { color: var(--primary); border-color: var(--primary); }
 .tabs a:hover { text-decoration: none; color: var(--text); }
 
+.editor-grid { grid-template-columns: minmax(0, 1fr) 280px; align-items: start; }
 .step { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; background: #fff; }
 .step-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
 .step-head .delay { display: flex; align-items: center; gap: 6px; }
@@ -149,7 +150,7 @@ details summary { cursor: pointer; font-weight: 600; }
 
 @media (max-width: 1000px) {
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .grid-3, .grid-2, .editor-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .layout { flex-direction: column; }
@@ -158,3 +159,8 @@ details summary { cursor: pointer; font-weight: 600; }
   .main { padding: 18px 16px 40px; }
   .card.tight { overflow-x: auto; }
 }
+
+.tpl-preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tpl-step { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fafbfc; }
+.tpl-body { white-space: pre-line; margin-top: 4px; }
+.use-row { border-top: 1px solid var(--border); padding-top: 12px; }

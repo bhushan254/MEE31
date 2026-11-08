@@ -27,12 +27,12 @@ function copyText(id) {
 }
 
 // Email preview modal on the campaign page.
-async function previewStep(btn, campaignId) {
+async function previewStep(btn, url) {
   const step = btn.closest(".step");
   const subject = step.querySelector("[name=subject]").value;
   const body = step.querySelector("[name=body]").value;
   const leadSel = document.getElementById("preview-lead");
-  const res = await fetch(`/campaigns/${campaignId}/preview`, {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subject, body, lead_id: leadSel ? leadSel.value : null }),

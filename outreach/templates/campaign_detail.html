@@ -37,84 +37,29 @@
 </div>
 
 {% if tab == 'sequence' %}
-<div class="grid" style="grid-template-columns: minmax(0,1fr) 260px; align-items:start">
-  <form method="post" action="/campaigns/{{ c.id }}/steps">
-    <div id="steps">
-      {% for s in c.steps %}
-      <div class="step">
-        <div class="step-head">
-          <b class="step-no">{{ 'Email 1 (first email)' if loop.first else 'Email ' ~ loop.index ~ ' (follow-up)' }}</b>
-          <div class="delay" style="visibility: {{ 'hidden' if loop.first else 'visible' }}">
-            Send <input type="number" name="delay_days" min="0" max="60" value="{{ s.delay_days }}"> days after the previous email
-          </div>
-        </div>
-        <div class="field"><input type="text" name="subject" value="{{ s.subject }}" data-var-target
-          placeholder="{{ 'Subject (required)' if loop.first else 'Leave empty to reply in the same thread (recommended)' }}"></div>
-        <div class="field"><textarea name="body" data-var-target placeholder="Write your email...">{{ s.body }}</textarea></div>
-        <div class="actions">
-          <button type="button" class="btn btn-sm" onclick="previewStep(this, {{ c.id }})">👁 Preview</button>
-          <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    <div class="actions">
-      <button type="button" class="btn" onclick="addStep()">+ Add follow-up</button>
-      <button class="btn btn-primary">Save emails</button>
-    </div>
+<div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px">
+  {% if templates_list %}
+  <form method="post" action="" id="use-tpl" class="row" style="margin:0;gap:8px;align-items:center"
+        onsubmit="this.action='/templates/' + this.tpl.value + '/use'; return confirm('Replace this campaign\'s emails with the selected template?')">
+    <input type="hidden" name="campaign_id" value="{{ c.id }}">
+    <span class="small"><b>Load a template:</b></span>
+    <select name="tpl" style="width:auto">{% for t in templates_list %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+    <button class="btn btn-sm">Load</button>
   </form>
-
-  <div>
-    <div class="card">
-      <h3>Personalize</h3>
-      <p class="muted small">Click a field in an email, then click a variable to insert it.</p>
-      <div class="var-list">
-        {% for v in variables %}<button type="button" onclick="insertVar('{{ v }}', this)">{{ '{{' ~ v ~ '}}' }}</button>{% endfor %}
-      </div>
-      <h3 style="margin-top:14px">Tips</h3>
-      <ul class="small muted" style="padding-left:18px;margin:0">
-        <li><b>Fallback:</b> <code>{{ '{{first_name|there}}' }}</code> uses "there" when the name is empty.</li>
-        <li><b>Spintax:</b> <code>{Hi|Hello|Hey}</code> picks one at random, so emails aren't all identical.</li>
-        <li>Plain text, short, 1 link at most. No images or attachments.</li>
-        <li>The signature (Mailboxes page) and opt-out line (Settings tab) are added automatically.</li>
-      </ul>
-    </div>
-    <div class="card">
-      <h3>Preview as</h3>
-      <select id="preview-lead">
-        {% for l in sample_leads %}<option value="{{ l.id }}">{{ l.full_name or l.email }}{{ ' · ' ~ l.company if l.company }}</option>{% else %}<option value="">Sample lead (Jane Doe)</option>{% endfor %}
-      </select>
-    </div>
-  </div>
+  {% else %}
+  <span class="small muted">Tip: save your best copies in <a href="/templates">Templates</a> to reuse them.</span>
+  {% endif %}
+  <form method="post" action="/campaigns/{{ c.id }}/save-template" style="margin:0 0 0 auto" class="row"
+        onsubmit="const n = prompt('Template name:', '{{ c.name|replace("'", "") }}'); if (!n) return false; this.elements['name'].value = n;">
+    <input type="hidden" name="name" value="">
+    <button class="btn btn-sm">💾 Save these emails as a template</button>
+  </form>
 </div>
-
-<template id="step-template">
-  <div class="step">
-    <div class="step-head">
-      <b class="step-no">Follow-up</b>
-      <div class="delay">Send <input type="number" name="delay_days" min="0" max="60" value="3"> days after the previous email</div>
-    </div>
-    <div class="field"><input type="text" name="subject" value="" data-var-target placeholder="Leave empty to reply in the same thread (recommended)"></div>
-    <div class="field"><textarea name="body" data-var-target placeholder="Write your follow-up..."></textarea></div>
-    <div class="actions">
-      <button type="button" class="btn btn-sm" onclick="previewStep(this, {{ c.id }})">👁 Preview</button>
-      <button type="button" class="btn btn-sm btn-danger" onclick="removeStep(this)">Remove</button>
-    </div>
-  </div>
-</template>
-
-<div class="modal-bg" id="preview-modal" onclick="if (event.target === this) closeModal('preview-modal')">
-  <div class="modal">
-    <div class="email-head">
-      <div class="small muted">From: <span id="pv-from"></span></div>
-      <div class="small muted">To: <span id="pv-to"></span></div>
-      <div><b>Subject:</b> <span id="pv-subject"></span></div>
-    </div>
-    <div class="notice small" id="pv-missing" style="display:none"></div>
-    <iframe id="pv-frame" sandbox="allow-same-origin"></iframe>
-    <div style="text-align:right;margin-top:12px"><button class="btn" onclick="closeModal('preview-modal')">Close</button></div>
-  </div>
-</div>
+{% set steps = c.steps %}
+{% set form_action = "/campaigns/" ~ c.id ~ "/steps" %}
+{% set preview_url = "/campaigns/" ~ c.id ~ "/preview" %}
+{% set save_label = "Save emails" %}
+{% include "_steps.html" %}
 
 {% elif tab == 'leads' %}
 <div class="card">
@@ -199,8 +144,12 @@
   <label class="check"><input type="checkbox" name="stop_on_reply" {{ 'checked' if c.stop_on_reply }}> Stop sending follow-ups when a lead replies</label>
   <div class="field" style="margin-top:12px;max-width:320px"><label>Auto-pause campaign if bounce rate goes above (%)</label><input type="number" name="bounce_pause_pct" min="1" max="50" value="{{ c.bounce_pause_pct|int }}"><div class="help">Checked after at least 10 leads are contacted.</div></div>
   <label class="check"><input type="checkbox" name="include_optout" {{ 'checked' if c.include_optout }}> Add an opt-out line to every email</label>
-  <div class="field" style="margin-top:8px"><textarea name="optout_text" style="min-height:60px">{{ c.optout_text }}</textarea>
-    <div class="help">When someone replies "unsubscribe", "remove me", "stop" etc., they are automatically blocklisted and removed from all campaigns.</div></div>
+  <div class="field" style="margin-top:8px"><textarea name="optout_text" style="min-height:60px">{{ c.optout_text }}</textarea></div>
+  <label class="check"><input type="checkbox" name="include_unsub_link" {{ 'checked' if c.include_unsub_link }}> Add a clickable unsubscribe link after the opt-out line</label>
+  <div class="field" style="margin-top:8px;max-width:320px"><label>Link text</label><input type="text" name="unsub_link_text" value="{{ c.unsub_link_text }}"></div>
+  <div class="help">People can unsubscribe <b>either way</b>: by replying "unsubscribe" / "remove me" / "stop", or by clicking the link.
+    Either one moves them to the <a href="/blocklist">Blocklist</a> and stops every campaign for them.
+    While Hello box runs on your PC, the link opens a ready-made "Unsubscribe" email to you (see Settings → Public web address).</div>
 </div>
 <button class="btn btn-primary">Save settings</button>
 </form>

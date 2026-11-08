@@ -29,6 +29,7 @@ from .db import (
     Setting,
     Step,
     Suppression,
+    Template,
     add_suppression,
     get_setting,
     init_db,
@@ -37,6 +38,7 @@ from .db import (
     set_setting,
     utcnow,
 )
+from . import unsubscribe
 from .leads_import import parse_csv
 from .templating import build_email_html, find_variables, lead_context, render, text_to_html
 
@@ -68,7 +70,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(start_scheduler: bool = True) -> FastAPI:
-    app = FastAPI(title="Outreach", lifespan=lifespan)
+    app = FastAPI(title="Hello box", lifespan=lifespan)
     app.state.start_scheduler = start_scheduler
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     register_routes(app)
@@ -168,6 +170,92 @@ def ms_configured(db) -> bool:
     return bool(get_setting(db, "ms_client_id") and get_setting(db, "ms_client_secret"))
 
 
+DEFAULT_STEPS = [
+    {"subject": "{Quick question|Question} about {{company|your company}}", "delay_days": 0,
+     "body": "Hi {{first_name|there}},\n\n[Write your first email here.]\n\nBest,\n{{sender_first_name}}"},
+    {"subject": "", "delay_days": 3,
+     "body": "Hi {{first_name|there}},\n\nJust following up on my last email. [Short follow-up.]\n\nThanks,\n{{sender_first_name}}"},
+]
+BASE_VARIABLES = {"first_name", "last_name", "full_name", "company", "email", "sender_name", "sender_first_name"}
+
+
+def steps_from_form(form) -> list[dict]:
+    """Read the step editor (subject[], body[], delay_days[]) into a list of dicts."""
+    subjects, bodies, delays = form.getlist("subject"), form.getlist("body"), form.getlist("delay_days")
+    steps: list[dict] = []
+    for i, (subj, body) in enumerate(zip(subjects, bodies)):
+        if not str(body).strip() and i > 0:
+            continue
+        delay = 0 if not steps else to_int(delays[i] if i < len(delays) else 3, 3, 0, 60)
+        steps.append({"subject": str(subj).strip(), "body": str(body), "delay_days": delay})
+    return steps
+
+
+def steps_of(campaign: Campaign) -> list[dict]:
+    return [{"subject": st.subject, "body": st.body, "delay_days": st.delay_days} for st in campaign.steps]
+
+
+def apply_steps(db, campaign: Campaign, steps: list[dict]) -> None:
+    """Replace a campaign's emails. Leads that had finished get the new extra steps."""
+    old_len = len(campaign.steps)
+    campaign.steps = [
+        Step(position=i, subject=st.get("subject", ""), body=st.get("body", ""),
+             delay_days=0 if i == 0 else to_int(st.get("delay_days"), 3, 0, 60))
+        for i, st in enumerate(steps)
+    ]
+    db.flush()
+    if len(steps) > old_len:
+        done = db.scalars(select(CampaignLead).where(CampaignLead.campaign_id == campaign.id, CampaignLead.status == "completed")).all()
+        for cl in done:
+            if cl.next_step < len(campaign.steps):
+                cl.status = "active"
+                cl.next_send_at = (cl.last_sent_at or utcnow()) + timedelta(days=campaign.steps[cl.next_step].delay_days)
+        if campaign.status == "completed":
+            campaign.status = "paused"
+
+
+def new_campaign(db, name: str, steps: list[dict] | None = None) -> Campaign:
+    c = Campaign(name=name, timezone=get_setting(db, "timezone"))
+    c.mailboxes = list(db.scalars(select(Mailbox).where(Mailbox.status == "active")).all())
+    db.add(c)
+    db.flush()
+    apply_steps(db, c, steps or DEFAULT_STEPS)
+    return c
+
+
+def all_variables(db, leads=None) -> list[str]:
+    keys = set(BASE_VARIABLES)
+    for ld in leads if leads is not None else db.scalars(select(Lead).order_by(Lead.id.desc()).limit(300)).all():
+        keys |= set((ld.fields or {}).keys())
+    return sorted(keys)
+
+
+def preview_payload(db, data: dict, campaign: Campaign | None = None) -> dict:
+    lead = db.get(Lead, to_int(data.get("lead_id"))) if data.get("lead_id") else None
+    mailbox = campaign.mailboxes[0] if campaign and campaign.mailboxes else db.scalar(select(Mailbox).limit(1))
+    if lead is None and campaign is not None:
+        lead = db.scalar(select(Lead).join(CampaignLead, CampaignLead.lead_id == Lead.id).where(CampaignLead.campaign_id == campaign.id).limit(1))
+    if lead is None:
+        lead = db.scalar(select(Lead).limit(1))
+    if lead is None:
+        lead = Lead(email="jane@example.com", first_name="Jane", last_name="Doe", company="Example Inc", fields={})
+    ctx = lead_context(lead, mailbox)
+    subject, m1 = render(str(data.get("subject", "")), ctx)
+    body, m2 = render(str(data.get("body", "")), ctx)
+    sig = render(mailbox.signature or "", ctx)[0] if mailbox else ""
+    # Templates aren't tied to a campaign yet: preview with the default footer.
+    settings = campaign or Campaign(include_optout=True, include_unsub_link=True,
+                                    optout_text=Campaign.__table__.c.optout_text.default.arg, unsub_link_text="Unsubscribe")
+    optout = render(settings.optout_text or "", ctx)[0] if settings.include_optout else ""
+    return {
+        "subject": subject or "(same thread: Re: previous subject)",
+        "html": build_email_html(body, sig, optout, unsubscribe.link_html(db, settings, lead, mailbox)),
+        "missing": sorted(m1 | m2),
+        "from": f"{mailbox.display_name} <{mailbox.email}>" if mailbox else "(no mailbox connected yet)",
+        "to": lead.email,
+    }
+
+
 def list_counts(db) -> list[tuple[str, int]]:
     return db.execute(select(Lead.list_name, func.count(Lead.id)).group_by(Lead.list_name).order_by(Lead.list_name)).all()
 
@@ -235,6 +323,7 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
                 has_secret=bool(get_setting(db, "ms_client_secret")),
                 tenant=get_setting(db, "ms_tenant"),
                 inbox_minutes=get_setting(db, "inbox_check_minutes"),
+                public_url=get_setting(db, "public_url"),
                 redirect_uri=redirect_uri(db),
                 timezones=TIMEZONES,
             )
@@ -252,6 +341,11 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
             if tzname in TIMEZONES:
                 set_setting(db, "timezone", tzname)
             set_setting(db, "inbox_check_minutes", str(to_int(form.get("inbox_check_minutes"), 5, 1, 60)))
+            public = str(form.get("public_url", "")).strip().rstrip("/")
+            if public and not public.startswith("https://"):
+                db.commit()
+                return redirect("/settings", err="Public web address must start with https:// (leave it empty while running on your PC).")
+            set_setting(db, "public_url", public)
             db.commit()
         return redirect("/settings", ok="Settings saved")
 
@@ -351,10 +445,10 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
             if not mb or "@" not in to:
                 return redirect("/mailboxes", err="Enter an email address for the test")
             sig = render(mb.signature or "", {"sender_name": mb.display_name, "sender_email": mb.email})[0]
-            html = build_email_html("Hi,\n\nThis is a test email from your outreach dashboard. If you can read this, the mailbox is connected correctly.", sig)
+            html = build_email_html("Hi,\n\nThis is a test email from Hello box. If you can read this, the mailbox is connected correctly.", sig)
             try:
                 client = eng.client_for(db, mb)
-                msg = client.create_message("Test email from your outreach dashboard", html, to)
+                msg = client.create_message("Test email from Hello box", html, to)
                 client.send(msg["id"])
             except graph.AuthError as exc:
                 eng.mark_reconnect(db, mb, str(exc))
@@ -508,16 +602,7 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
         form = await request.form()
         name = str(form.get("name", "")).strip() or "New campaign"
         with SessionLocal() as db:
-            mailboxes = db.scalars(select(Mailbox).where(Mailbox.status == "active")).all()
-            c = Campaign(name=name, timezone=get_setting(db, "timezone"))
-            c.mailboxes = list(mailboxes)
-            c.steps = [
-                Step(position=0, delay_days=0, subject="{Quick question|Question} about {{company|your company}}",
-                     body="Hi {{first_name|there}},\n\n[Write your first email here.]\n\nBest,\n{{sender_first_name}}"),
-                Step(position=1, delay_days=3, subject="",
-                     body="Hi {{first_name|there}},\n\nJust following up on my last email. [Short follow-up.]\n\nThanks,\n{{sender_first_name}}"),
-            ]
-            db.add(c)
+            c = new_campaign(db, name)
             db.commit()
             return redirect(f"/campaigns/{c.id}", ok="Campaign created. Edit the emails below, then add leads.")
 
@@ -552,8 +637,8 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
                 pages=max(1, math.ceil(total / PAGE_SIZE)), f_status=f_status,
                 lists=list_counts(db), all_mailboxes=db.scalars(select(Mailbox).order_by(Mailbox.email)).all(),
                 sample_leads=sample_leads, days=DAYS, timezones=TIMEZONES,
-                variables=sorted({"first_name", "last_name", "full_name", "company", "email", "sender_name",
-                                  "sender_first_name"} | field_keys),
+                variables=sorted(BASE_VARIABLES | field_keys),
+                templates_list=db.scalars(select(Template).order_by(Template.name)).all(),
                 used_vars=used_vars, events=events,
                 in_window=eng.in_window(c, utcnow()),
             )
@@ -561,57 +646,35 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
     @app.post("/campaigns/{cid}/steps")
     async def campaign_steps(cid: int, request: Request):
         form = await request.form()
-        subjects, bodies, delays = form.getlist("subject"), form.getlist("body"), form.getlist("delay_days")
+        steps = steps_from_form(form)
         with SessionLocal() as db:
             c = db.get(Campaign, cid)
             if not c:
                 return redirect("/campaigns")
-            new_steps = []
-            for i, (s, b) in enumerate(zip(subjects, bodies)):
-                if not str(b).strip() and i > 0:
-                    continue
-                new_steps.append(Step(position=len(new_steps), subject=str(s).strip(), body=str(b),
-                                      delay_days=0 if not new_steps else to_int(delays[i] if i < len(delays) else 3, 3, 0, 60)))
-            if not new_steps or not new_steps[0].subject:
+            if not steps or not steps[0]["subject"] or not steps[0]["body"].strip():
                 return redirect(f"/campaigns/{cid}?tab=sequence", err="The first email needs a subject and a body.")
-            # Leads that already finished the old sequence may have new steps now.
-            old_len = len(c.steps)
-            c.steps = new_steps
-            db.flush()
-            if len(new_steps) > old_len:
-                for cl in db.scalars(select(CampaignLead).where(CampaignLead.campaign_id == cid, CampaignLead.status == "completed")).all():
-                    cl.status = "active"
-                    cl.next_send_at = (cl.last_sent_at or utcnow()) + timedelta(days=new_steps[cl.next_step].delay_days)
-                if c.status == "completed":
-                    c.status = "paused"
+            apply_steps(db, c, steps)
             db.commit()
-        return redirect(f"/campaigns/{cid}?tab=sequence", ok="Sequence saved")
+        return redirect(f"/campaigns/{cid}?tab=sequence", ok="Emails saved")
+
+    @app.post("/campaigns/{cid}/save-template")
+    async def campaign_save_template(cid: int, request: Request):
+        form = await request.form()
+        with SessionLocal() as db:
+            c = db.get(Campaign, cid)
+            if not c:
+                return redirect("/campaigns")
+            name = str(form.get("name", "")).strip() or c.name
+            t = Template(name=name, steps=steps_of(c))
+            db.add(t)
+            db.commit()
+            return redirect(f"/templates/{t.id}", ok=f"Saved as template '{name}'")
 
     @app.post("/campaigns/{cid}/preview")
     async def campaign_preview(cid: int, request: Request):
         data = await request.json()
         with SessionLocal() as db:
-            c = db.get(Campaign, cid)
-            lead = db.get(Lead, to_int(data.get("lead_id"))) if data.get("lead_id") else None
-            mailbox = c.mailboxes[0] if c and c.mailboxes else db.scalar(select(Mailbox).limit(1))
-            if lead is None:
-                lead = db.scalar(
-                    select(Lead).join(CampaignLead, CampaignLead.lead_id == Lead.id).where(CampaignLead.campaign_id == cid).limit(1)
-                ) or db.scalar(select(Lead).limit(1))
-            if lead is None:
-                lead = Lead(email="jane@example.com", first_name="Jane", last_name="Doe", company="Example Inc", fields={})
-            ctx = lead_context(lead, mailbox)
-            subject, m1 = render(str(data.get("subject", "")), ctx)
-            body, m2 = render(str(data.get("body", "")), ctx)
-            sig = render(mailbox.signature or "", ctx)[0] if mailbox else ""
-            optout = render(c.optout_text, ctx)[0] if c and c.include_optout else ""
-            return JSONResponse({
-                "subject": subject or "(same thread: Re: previous subject)",
-                "html": build_email_html(body, sig, optout),
-                "missing": sorted(m1 | m2),
-                "from": f"{mailbox.display_name} <{mailbox.email}>" if mailbox else "(no mailbox connected yet)",
-                "to": lead.email,
-            })
+            return JSONResponse(preview_payload(db, data, db.get(Campaign, cid)))
 
     @app.post("/campaigns/{cid}/settings")
     async def campaign_settings(cid: int, request: Request):
@@ -637,6 +700,8 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
             c.stop_on_reply = form.get("stop_on_reply") == "on"
             c.include_optout = form.get("include_optout") == "on"
             c.optout_text = str(form.get("optout_text", c.optout_text))
+            c.include_unsub_link = form.get("include_unsub_link") == "on"
+            c.unsub_link_text = str(form.get("unsub_link_text", "")).strip()[:100] or "Unsubscribe"
             c.bounce_pause_pct = float(to_int(form.get("bounce_pause_pct"), 5, 1, 50))
             db.commit()
         return redirect(f"/campaigns/{cid}?tab=settings", ok="Settings saved")
@@ -728,7 +793,8 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
                 return redirect("/campaigns")
             n = Campaign(name=c.name + " (copy)")
             for f in ("timezone", "send_days", "start_hour", "end_hour", "min_gap_minutes", "max_gap_minutes",
-                      "max_new_per_day", "stop_on_reply", "include_optout", "optout_text", "bounce_pause_pct"):
+                      "max_new_per_day", "stop_on_reply", "include_optout", "optout_text", "bounce_pause_pct",
+                      "include_unsub_link", "unsub_link_text"):
                 setattr(n, f, getattr(c, f))
             n.mailboxes = list(c.mailboxes)
             n.steps = [Step(position=s.position, delay_days=s.delay_days, subject=s.subject, body=s.body) for s in c.steps]
@@ -865,6 +931,124 @@ def register_routes(app: FastAPI) -> None:  # noqa: C901 (one place for all page
                 stmt = stmt.where(EventLog.level == level)
             events = db.scalars(stmt.order_by(EventLog.id.desc()).limit(300)).all()
             return page(request, db, "activity.html", events=events, level=level)
+
+    # -------------------------------------------------------- templates (saved email copies)
+    @app.get("/templates", response_class=HTMLResponse)
+    def templates_page(request: Request):
+        with SessionLocal() as db:
+            rows = db.scalars(select(Template).order_by(Template.updated_at.desc())).all()
+            camps = db.scalars(select(Campaign).order_by(Campaign.id.desc())).all()
+            return page(request, db, "templates.html", rows=rows, campaigns=camps)
+
+    @app.post("/templates")
+    async def template_create(request: Request):
+        form = await request.form()
+        name = str(form.get("name", "")).strip() or "New template"
+        with SessionLocal() as db:
+            t = Template(name=name, steps=[dict(st) for st in DEFAULT_STEPS])
+            db.add(t)
+            db.commit()
+            return redirect(f"/templates/{t.id}", ok="Template created. Paste your email copy below and save.")
+
+    @app.post("/templates/preview")
+    async def template_preview(request: Request):
+        data = await request.json()
+        with SessionLocal() as db:
+            return JSONResponse(preview_payload(db, data))
+
+    @app.get("/templates/{tid}", response_class=HTMLResponse)
+    def template_detail(tid: int, request: Request):
+        with SessionLocal() as db:
+            t = db.get(Template, tid)
+            if not t:
+                return redirect("/templates", err="Template not found")
+            sample = db.scalars(select(Lead).order_by(Lead.id.desc()).limit(20)).all()
+            return page(request, db, "template_detail.html", t=t, steps=t.steps or [dict(DEFAULT_STEPS[0])],
+                        variables=all_variables(db), sample_leads=sample,
+                        campaigns=db.scalars(select(Campaign).order_by(Campaign.id.desc())).all())
+
+    @app.post("/templates/{tid}")
+    async def template_save(tid: int, request: Request):
+        form = await request.form()
+        steps = steps_from_form(form)
+        with SessionLocal() as db:
+            t = db.get(Template, tid)
+            if not t:
+                return redirect("/templates")
+            if not steps or not steps[0]["subject"] or not steps[0]["body"].strip():
+                return redirect(f"/templates/{tid}", err="The first email needs a subject and a body.")
+            t.name = str(form.get("name", "")).strip() or t.name
+            t.steps = steps
+            t.updated_at = utcnow()
+            db.commit()
+        return redirect(f"/templates/{tid}", ok="Template saved")
+
+    @app.post("/templates/{tid}/use")
+    async def template_use(tid: int, request: Request):
+        """'Add to campaign': start a new campaign with this copy, or put it into an existing one."""
+        form = await request.form()
+        target = str(form.get("campaign_id", "new"))
+        with SessionLocal() as db:
+            t = db.get(Template, tid)
+            if not t or not t.steps:
+                return redirect("/templates", err="This template has no emails yet")
+            if target == "new":
+                name = str(form.get("campaign_name", "")).strip() or t.name
+                c = new_campaign(db, name, t.steps)
+                db.commit()
+                return redirect(f"/campaigns/{c.id}", ok=f"New campaign created from template '{t.name}'. Next: add leads (Leads tab).")
+            c = db.get(Campaign, to_int(target))
+            if not c:
+                return redirect("/templates", err="Campaign not found")
+            apply_steps(db, c, t.steps)
+            log_event(db, f"Emails of campaign '{c.name}' replaced with template '{t.name}'", campaign_id=c.id)
+            db.commit()
+            return redirect(f"/campaigns/{c.id}", ok=f"Template '{t.name}' added to this campaign (its emails were replaced).")
+
+    @app.post("/templates/{tid}/duplicate")
+    def template_duplicate(tid: int):
+        with SessionLocal() as db:
+            t = db.get(Template, tid)
+            if not t:
+                return redirect("/templates")
+            n = Template(name=t.name + " (copy)", steps=[dict(st) for st in t.steps or []])
+            db.add(n)
+            db.commit()
+            return redirect(f"/templates/{n.id}", ok="Template copied")
+
+    @app.post("/templates/{tid}/delete")
+    def template_delete(tid: int):
+        with SessionLocal() as db:
+            t = db.get(Template, tid)
+            if t:
+                db.delete(t)
+                db.commit()
+        return redirect("/templates", ok="Template deleted")
+
+    # -------------------------------------------------------- public unsubscribe page (when hosted online)
+    def _unsub_lookup(db, lead_id: int, mailbox_id: int, sig: str):
+        lead = db.get(Lead, lead_id)
+        if not lead or not unsubscribe.verify(db, lead_id, mailbox_id, sig):
+            return None
+        return lead
+
+    @app.get("/u/{lead_id}/{mailbox_id}/{sig}", response_class=HTMLResponse)
+    def unsubscribe_page(lead_id: int, mailbox_id: int, sig: str, request: Request):
+        with SessionLocal() as db:
+            lead = _unsub_lookup(db, lead_id, mailbox_id, sig)
+            return templates.TemplateResponse(request, "unsubscribe.html", {
+                "valid": lead is not None, "done": bool(lead and lead.status == "unsubscribed"),
+                "email": lead.email if lead else ""})
+
+    @app.post("/u/{lead_id}/{mailbox_id}/{sig}", response_class=HTMLResponse)
+    def unsubscribe_confirm(lead_id: int, mailbox_id: int, sig: str, request: Request):
+        with SessionLocal() as db:
+            lead = _unsub_lookup(db, lead_id, mailbox_id, sig)
+            if lead and lead.status != "unsubscribed":
+                eng.unsubscribe_lead(db, lead, "clicked the unsubscribe link", mailbox_id=mailbox_id)
+                db.commit()
+            return templates.TemplateResponse(request, "unsubscribe.html", {
+                "valid": lead is not None, "done": lead is not None, "email": lead.email if lead else ""})
 
     @app.get("/guide", response_class=HTMLResponse)
     def guide_page(request: Request):

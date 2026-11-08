@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/templates">← Templates</a></div>
+    <h1>{{ t.name }}</h1>
+    <div class="sub">Edit the copy, then click <b>Save template</b>. Changes here don't affect campaigns that already use it.</div>
+  </div>
+  <div class="actions">
+    <form method="post" action="/templates/{{ t.id }}/duplicate" class="inline"><button class="btn">Duplicate</button></form>
+    <form method="post" action="/templates/{{ t.id }}/delete" class="inline" onsubmit="return confirm('Delete this template?')"><button class="btn btn-danger">Delete</button></form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add to campaign</h2>
+  <p class="muted small">Save your changes first. Choosing an existing campaign <b>replaces</b> that campaign's emails with this template.</p>
+  <form method="post" action="/templates/{{ t.id }}/use" class="row use-row" style="border-top:none;padding-top:0">
+    <div class="field" style="margin:0">
+      <select name="campaign_id" onchange="this.form.querySelector('.new-name').style.display = this.value === 'new' ? '' : 'none'">
+        <option value="new">➕ New campaign</option>
+        {% for c in campaigns %}<option value="{{ c.id }}">{{ c.name }} ({{ c.status }})</option>{% endfor %}
+      </select></div>
+    <div class="field new-name" style="margin:0"><input type="text" name="campaign_name" placeholder="New campaign name ({{ t.name }})"></div>
+    <div class="field" style="flex:0;margin:0">
+      <button class="btn btn-primary" onclick="const s = this.form.campaign_id; return s.value === 'new' || confirm('This replaces the emails of the selected campaign. Continue?')">Add to campaign</button></div>
+  </form>
+</div>
+
+{% set form_action = "/templates/" ~ t.id %}
+{% set preview_url = "/templates/preview" %}
+{% set save_label = "Save template" %}
+{% set name_label = "Template name" %}
+{% set name_value = t.name %}
+{% include "_steps.html" %}
+{% endblock %}

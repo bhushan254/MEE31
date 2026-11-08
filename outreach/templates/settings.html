@@ -32,6 +32,10 @@
     <div class="field"><label>Check inboxes for replies every (minutes)</label>
       <input type="number" name="inbox_check_minutes" min="1" max="60" value="{{ inbox_minutes }}"></div>
   </div>
+  <div class="field"><label>Public web address (only when Hello box is hosted online)</label>
+    <input type="text" name="public_url" value="{{ public_url }}" placeholder="Leave empty while running on your PC">
+    <div class="help">While this is empty, the <b>Unsubscribe</b> link in emails opens a pre-written "Unsubscribe" email to you, and Hello box blocklists the sender automatically when it arrives.
+      Once Hello box runs on a server with its own web address (e.g. <code>https://hellobox.yourdomain.com</code>), enter it here and the link becomes a one-click unsubscribe page.</div></div>
 </div>
 <button class="btn btn-primary">Save settings</button>
 </form>

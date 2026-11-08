@@ -73,12 +73,16 @@ def text_to_html(text: str) -> str:
     return html.escape(text.strip()).replace("\r\n", "\n").replace("\n", "<br>\n")
 
 
-def build_email_html(body: str, signature: str = "", optout: str = "") -> str:
+def build_email_html(body: str, signature: str = "", optout: str = "", unsub_link_html: str = "") -> str:
+    """unsub_link_html must already be safe HTML (it's built by unsubscribe.link_html)."""
     parts = [text_to_html(body)]
     if signature and signature.strip():
         parts.append(text_to_html(signature))
-    if optout and optout.strip():
-        parts.append(text_to_html(optout))
+    footer = text_to_html(optout) if optout and optout.strip() else ""
+    if unsub_link_html:
+        footer = f"{footer} {unsub_link_html}" if footer else unsub_link_html
+    if footer:
+        parts.append(f'<span style="font-size:9pt;color:#666666">{footer}</span>')
     inner = "<br><br>\n".join(parts)
     return f'<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000">{inner}</div>'
 

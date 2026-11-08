@@ -1,4 +1,4 @@
-# Outreach: personal cold email dashboard for Microsoft 365
+# Hello box: personal cold email dashboard for Microsoft 365
 
 A self-hosted cold outreach tool, similar to ManyReach and Instantly, that you run on your own Windows PC.
 It sends personalized email sequences from your Microsoft 365 email IDs, rotates across your mailboxes,
@@ -11,6 +11,8 @@ follows up automatically, stops when someone replies, and handles bounces and un
 - **Mailboxes:** connect all your Microsoft email IDs with the official "Sign in with Microsoft". Each one gets its own daily limit and signature.
 - **Leads:** upload CSV files. Every extra column (City, Website, Icebreaker…) becomes a `{{variable}}` you can use in emails.
 - **Campaigns:** first email plus any number of follow-ups. Follow-ups are sent as replies in the same thread.
+- **Templates:** save your email copies (first email + follow-ups) and reuse them. "Add to campaign" starts a new campaign from a template or loads it into an existing one. Any campaign's emails can be saved as a template.
+- **Unsubscribe, two ways:** leads can reply "unsubscribe" / "remove me" / "stop", or click the **Unsubscribe** link at the bottom of every email. Either way they go to the Blocklist and every campaign stops for them.
 - **Personalization:** `{{first_name}}`, fallbacks `{{first_name|there}}`, and spintax `{Hi|Hello|Hey}`.
 - **Rotation:** emails are spread across your mailboxes. Follow-ups always come from the mailbox that sent the first email.
 - **Human-like sending:** only in business hours in your leads' time zone, with a random wait between emails.
@@ -23,7 +25,7 @@ follows up automatically, stops when someone replies, and handles bounces and un
 1. **Install Python.** Download it from <https://www.python.org/downloads/> and run the installer.
    On the first screen, **tick "Add python.exe to PATH"**, then click *Install Now*.
 2. **Download this tool.** On the GitHub page, click the green **Code** button, then **Download ZIP**.
-   Unzip it somewhere easy to find, for example `Documents\Outreach`.
+   Unzip it somewhere easy to find, for example `Documents\HelloBox`.
 3. **Start it.** Open the folder and double-click **`start.bat`**.
    - The first start takes 1–2 minutes while it sets itself up.
    - If Windows shows "Windows protected your PC", click *More info*, then *Run anyway*.
@@ -41,6 +43,25 @@ From then on, double-click `start.bat` whenever you want to use it.
 - To stop the tool, close the black window.
 - All your data (leads, campaigns, emails) lives in the `data` folder next to `start.bat`.
   **Back up that folder** now and then. If you download a newer version of the tool, copy your `data` folder into it.
+
+## Installing an update (keeps all your accounts and data)
+
+1. Close the black `start.bat` window.
+2. Make a backup copy of your `data` folder (just in case).
+3. Download the new ZIP and unzip it to a **new** folder.
+4. Copy your old `data` folder into the new folder (next to `start.bat`).
+5. Double-click `start.bat` in the new folder.
+
+Your connected mailboxes, settings, leads, campaigns, templates and replies all carry over. You don't need to reconnect
+anything or repeat the Microsoft setup. New versions automatically upgrade the database the first time they start.
+
+## About the unsubscribe link
+
+Hello box runs on your PC, which websites can't reach. So for now the **Unsubscribe** link opens a ready-made
+email to you with the subject "Unsubscribe". When it arrives, Hello box blocklists that person automatically.
+When Hello box is later hosted on a server, enter its web address in *Settings → Public web address*, and the link becomes
+a one-click unsubscribe page instead. (Microsoft doesn't allow apps to add the hidden "List-Unsubscribe" email header,
+so the link in the email is the way to offer this.)
 
 ## Recommended limits (how you already worked)
 
@@ -64,7 +85,8 @@ From then on, double-click `start.bat` whenever you want to use it.
   - `outreach/engine.py`: scheduler, sending, follow-ups, reply/bounce/unsubscribe detection
   - `outreach/graph.py`: Microsoft OAuth and Graph mail API
   - `outreach/web.py`: dashboard routes; `outreach/templates/`: pages
-  - `outreach/db.py`: database models
+  - `outreach/db.py`: database models plus automatic schema upgrade (`upgrade_schema`)
+  - `outreach/unsubscribe.py`: unsubscribe links (mailto now, signed web link when hosted)
 - Env vars: `OUTREACH_PORT` (default 8000), `OUTREACH_DATA_DIR`, `OUTREACH_DB_URL`, `OUTREACH_NO_BROWSER=1`.
 
 ### Roadmap to going live (multi-user)

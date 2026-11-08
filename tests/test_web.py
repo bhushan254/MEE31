@@ -42,7 +42,7 @@ def test_full_flow_import_campaign_start(client):
 
     r = client.post(f"/campaigns/{cid}/steps", data={
         "subject": ["Hi {{first_name}}", ""], "body": ["Hello from {{city}}", "Bump"], "delay_days": ["0", "4"]})
-    assert "Sequence saved" in r.text
+    assert "Emails saved" in r.text
     preview = client.post(f"/campaigns/{cid}/preview", json={"subject": "Hi {{first_name}}", "body": "In {{city}} {{zip}}"})
     assert preview.json()["missing"] == ["zip"]
 

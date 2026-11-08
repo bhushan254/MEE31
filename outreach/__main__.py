@@ -1,4 +1,4 @@
-"""Start the dashboard:  python -m outreach"""
+"""Start Hello box:  python -m outreach"""
 
 import os
 import threading
@@ -12,7 +12,7 @@ from .web import create_app
 def main() -> None:
     port = int(os.environ.get("OUTREACH_PORT", "8000"))
     url = f"http://localhost:{port}"
-    print("\n  Outreach dashboard is running at", url)
+    print("\n  Hello box is running at", url)
     print("  Keep this window open while you want emails to be sent.")
     print("  To stop: close this window (or press Ctrl+C).\n")
     if os.environ.get("OUTREACH_NO_BROWSER") != "1":
